@@ -1,0 +1,83 @@
+name: Build and Package DMG
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Xcode
+      uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: latest-stable
+    
+    - name: Install create-dmg
+      run: |
+        brew install create-dmg
+    
+    - name: Build app
+      run: |
+        xcodebuild -project "Lyric Fever.xcodeproj" \
+          -scheme "SpotifyLyricsInMenubar" \
+          -configuration Release \
+          -derivedDataPath build \
+          -allowProvisioningUpdates \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO \
+          DEVELOPMENT_TEAM="" \
+          build
+    
+    - name: Find app bundle
+      run: |
+        APP_PATH=$(find build/Build/Products -name "*.app" -type d | head -n 1)
+        echo "APP_PATH=$APP_PATH" >> $GITHUB_ENV
+        echo "Found app at: $APP_PATH"
+        
+    - name: Create DMG
+      run: |
+        APP_NAME="LyricFever"
+        DMG_NAME="${APP_NAME}.dmg"
+        
+        # Create a temporary directory for DMG contents
+        mkdir -p dmg_contents
+        cp -R "$APP_PATH" dmg_contents/
+        
+        # Create DMG with background and custom settings
+        create-dmg \
+          --volname "${APP_NAME}" \
+          --window-pos 200 120 \
+          --window-size 600 400 \
+          --icon-size 100 \
+          --icon "$(basename "$APP_PATH")" 150 200 \
+          --hide-extension "$(basename "$APP_PATH")" \
+          --app-drop-link 450 200 \
+          --no-internet-enable \
+          "${DMG_NAME}" \
+          "dmg_contents/"
+        
+        echo "DMG_PATH=${DMG_NAME}" >> $GITHUB_ENV
+    
+    - name: Upload DMG artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: LyricFever-dmg
+        path: ${{ env.DMG_PATH }}
+        
+    - name: Create Release (if tag push)
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: ${{ env.DMG_PATH }}
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
