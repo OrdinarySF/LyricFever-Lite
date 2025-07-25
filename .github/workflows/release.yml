@@ -1,0 +1,316 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 1.0.0, without v prefix)'
+        required: false
+        type: string
+      release_type:
+        description: 'Release type'
+        required: true
+        type: choice
+        options:
+          - 'stable'
+          - 'beta'
+          - 'nightly'
+        default: 'stable'
+      release_notes:
+        description: 'Release notes (optional, auto-generated if empty)'
+        required: false
+        type: string
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # For changelog generation
+    
+    - name: Setup Environment
+      run: |
+        echo "🔧 Setting up build environment..."
+        sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+        xcodebuild -version
+        swift --version
+        
+        # Install dependencies
+        if ! command -v create-dmg &> /dev/null; then
+          brew install create-dmg
+        fi
+        gem install xcpretty
+    
+    - name: Determine Version and Release Info
+      id: version
+      run: |
+        # Determine version based on trigger
+        if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.version }}" ]]; then
+          VERSION="${{ github.event.inputs.version }}"
+          VERSION_TAG="v${VERSION}"
+          RELEASE_TYPE="${{ github.event.inputs.release_type }}"
+        elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+          VERSION_TAG="${{ github.ref_name }}"
+          VERSION="${VERSION_TAG#v}"
+          RELEASE_TYPE="stable"
+        else
+          # For PR and branch builds
+          VERSION="0.0.0"
+          VERSION_TAG="dev"
+          RELEASE_TYPE="nightly"
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
+            VERSION=$(date +%Y.%m.%d)
+            VERSION_TAG="nightly-$(date +%Y%m%d-%H%M%S)"
+          fi
+        fi
+        
+        echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+        echo "VERSION_TAG=${VERSION_TAG}" >> $GITHUB_OUTPUT
+        echo "RELEASE_TYPE=${RELEASE_TYPE}" >> $GITHUB_OUTPUT
+        echo "📦 Version: ${VERSION} (${VERSION_TAG}), Type: ${RELEASE_TYPE}"
+    
+    - name: Clean and Prepare
+      run: |
+        echo "🧹 Cleaning previous builds..."
+        xcodebuild clean \
+          -project "Lyric Fever.xcodeproj" \
+          -scheme "SpotifyLyricsInMenubar" \
+          -configuration Release
+        
+        # Remove any existing build artifacts
+        rm -rf build/
+    
+    - name: Resolve Dependencies
+      run: |
+        echo "📦 Resolving Swift Package dependencies..."
+        xcodebuild -resolvePackageDependencies \
+          -project "Lyric Fever.xcodeproj" \
+          -scheme "SpotifyLyricsInMenubar" \
+          -clonedSourcePackagesDirPath SourcePackages
+    
+    - name: Build Application
+      run: |
+        echo "🔨 Building Lyric Fever..."
+        xcodebuild build \
+          -project "Lyric Fever.xcodeproj" \
+          -scheme "SpotifyLyricsInMenubar" \
+          -destination "platform=macOS" \
+          -configuration Release \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO \
+          DEVELOPMENT_TEAM="" \
+          -derivedDataPath build/DerivedData \
+          MARKETING_VERSION="${{ steps.version.outputs.VERSION }}" \
+          | xcpretty --no-utf
+        
+        # Verify build succeeded
+        APP_PATH=$(find build/DerivedData/Build/Products/Release -name "*.app" -type d | head -1)
+        if [[ -z "$APP_PATH" ]]; then
+          echo "❌ Build failed: No app bundle found"
+          exit 1
+        fi
+        echo "✅ Build succeeded: ${APP_PATH}"
+    
+    - name: Create DMG Installer
+      id: create_dmg
+      if: steps.version.outputs.RELEASE_TYPE != 'nightly' || github.event_name == 'workflow_dispatch'
+      run: |
+        echo "💿 Creating DMG installer..."
+        APP_PATH=$(find build/DerivedData/Build/Products/Release -name "*.app" -type d | head -1)
+        APP_NAME=$(basename "${APP_PATH}")
+        DMG_NAME="LyricFever-${{ steps.version.outputs.VERSION }}.dmg"
+        
+        # Create temporary directory for DMG
+        mkdir -p dmg_temp
+        cp -R "${APP_PATH}" dmg_temp/
+        
+        # Create styled DMG
+        create-dmg \
+          --volname "Lyric Fever" \
+          --volicon "${APP_PATH}/Contents/Resources/AppIcon.icns" \
+          --window-pos 200 120 \
+          --window-size 600 400 \
+          --icon-size 100 \
+          --icon "${APP_NAME}" 150 185 \
+          --hide-extension "${APP_NAME}" \
+          --app-drop-link 450 185 \
+          --no-internet-enable \
+          "${DMG_NAME}" \
+          dmg_temp/
+        
+        # Clean up
+        rm -rf dmg_temp
+        
+        echo "DMG_PATH=${DMG_NAME}" >> $GITHUB_OUTPUT
+        echo "✅ Created DMG: ${DMG_NAME}"
+    
+    - name: Create ZIP Archive
+      id: create_zip
+      run: |
+        echo "🗜️ Creating ZIP archive..."
+        APP_PATH=$(find build/DerivedData/Build/Products/Release -name "*.app" -type d | head -1)
+        ZIP_NAME="LyricFever-${{ steps.version.outputs.VERSION }}.zip"
+        
+        # Create ZIP with proper attributes
+        cd "$(dirname "${APP_PATH}")"
+        zip -r -y -X "${GITHUB_WORKSPACE}/${ZIP_NAME}" "$(basename "${APP_PATH}")"
+        cd "${GITHUB_WORKSPACE}"
+        
+        echo "ZIP_PATH=${ZIP_NAME}" >> $GITHUB_OUTPUT
+        echo "✅ Created ZIP: ${ZIP_NAME}"
+    
+    - name: Generate Release Notes
+      id: release_notes
+      if: github.event_name != 'pull_request'
+      run: |
+        echo "📝 Generating release notes..."
+        
+        # Use provided notes or generate from commits
+        if [[ -n "${{ github.event.inputs.release_notes }}" ]]; then
+          NOTES="${{ github.event.inputs.release_notes }}"
+        else
+          # Get previous tag for changelog
+          if [[ "${{ steps.version.outputs.RELEASE_TYPE }}" == "nightly" ]]; then
+            PREVIOUS_TAG=$(git tag -l "nightly-*" --sort=-version:refname | head -2 | tail -1)
+          else
+            PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          fi
+          
+          if [[ -z "$PREVIOUS_TAG" ]]; then
+            COMMITS=$(git log --pretty=format:"- %s (%h)" --max-count=20)
+          else
+            COMMITS=$(git log ${PREVIOUS_TAG}..HEAD --pretty=format:"- %s (%h)")
+          fi
+          
+          NOTES="## Changes in this release\n\n${COMMITS}"
+        fi
+        
+        # Create release notes file
+        cat > RELEASE_NOTES.md << EOF
+        # Lyric Fever ${{ steps.version.outputs.VERSION }}
+        
+        ${NOTES}
+        
+        ## Installation
+        
+        1. Download the DMG file (recommended) or ZIP archive
+        2. Open the DMG and drag Lyric Fever to your Applications folder
+        3. Launch Lyric Fever from Applications
+        4. Grant necessary permissions when prompted
+        
+        ## System Requirements
+        
+        - macOS 13.0 (Ventura) or later
+        - Spotify or Apple Music installed
+        
+        ## What's New
+        
+        - Real-time synchronized lyrics
+        - Fullscreen mode (macOS 14+)
+        - Floating karaoke window
+        - Multiple lyric sources
+        - Offline caching
+        - Multi-language support
+        EOF
+        
+        echo "✅ Release notes generated"
+    
+    - name: Calculate Checksums
+      id: checksums
+      if: github.event_name != 'pull_request'
+      run: |
+        echo "🔐 Calculating checksums..."
+        
+        if [[ -f "${{ steps.create_dmg.outputs.DMG_PATH }}" ]]; then
+          DMG_SHA256=$(shasum -a 256 "${{ steps.create_dmg.outputs.DMG_PATH }}" | cut -d' ' -f1)
+          echo "DMG_SHA256=${DMG_SHA256}" >> $GITHUB_OUTPUT
+          echo "DMG SHA256: ${DMG_SHA256}"
+        fi
+        
+        ZIP_SHA256=$(shasum -a 256 "${{ steps.create_zip.outputs.ZIP_PATH }}" | cut -d' ' -f1)
+        echo "ZIP_SHA256=${ZIP_SHA256}" >> $GITHUB_OUTPUT
+        echo "ZIP SHA256: ${ZIP_SHA256}"
+        
+        # Append to release notes
+        cat >> RELEASE_NOTES.md << EOF
+        
+        ## Checksums
+        
+        - ZIP: \`${ZIP_SHA256}\`
+        EOF
+        
+        if [[ -n "${DMG_SHA256}" ]]; then
+          echo "- DMG: \`${DMG_SHA256}\`" >> RELEASE_NOTES.md
+        fi
+    
+    - name: Create GitHub Release
+      if: github.event_name != 'pull_request' && (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/'))
+      run: |
+        echo "🚀 Creating GitHub release..."
+        
+        # Determine if this is a prerelease
+        PRERELEASE_FLAG=""
+        if [[ "${{ steps.version.outputs.RELEASE_TYPE }}" != "stable" ]]; then
+          PRERELEASE_FLAG="--prerelease"
+        fi
+        
+        # Prepare files list
+        FILES="${{ steps.create_zip.outputs.ZIP_PATH }}"
+        if [[ -f "${{ steps.create_dmg.outputs.DMG_PATH }}" ]]; then
+          FILES="${FILES} ${{ steps.create_dmg.outputs.DMG_PATH }}"
+        fi
+        
+        # Create release
+        gh release create "${{ steps.version.outputs.VERSION_TAG }}" \
+          --title "Lyric Fever ${{ steps.version.outputs.VERSION }}" \
+          --notes-file RELEASE_NOTES.md \
+          ${PRERELEASE_FLAG} \
+          ${FILES}
+        
+        echo "✅ Release created: ${{ steps.version.outputs.VERSION_TAG }}"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Upload Build Artifacts
+      uses: actions/upload-artifact@v4
+      if: github.event_name == 'pull_request'
+      with:
+        name: lyric-fever-pr-${{ github.event.pull_request.number }}
+        path: |
+          ${{ steps.create_zip.outputs.ZIP_PATH }}
+        retention-days: 7
+    
+    - name: Update Sparkle Appcast
+      if: steps.version.outputs.RELEASE_TYPE == 'stable' && startsWith(github.ref, 'refs/tags/')
+      run: |
+        echo "📡 Updating Sparkle appcast..."
+        # TODO: Implement Sparkle appcast update
+        # This would typically involve:
+        # 1. Downloading current appcast.xml
+        # 2. Adding new version entry
+        # 3. Committing updated appcast.xml
+        echo "⚠️  Sparkle appcast update not implemented yet"
+    
+    - name: Post Build Summary
+      if: always()
+      run: |
+        echo "## 📊 Build Summary"
+        echo "- **Version**: ${{ steps.version.outputs.VERSION }}"
+        echo "- **Tag**: ${{ steps.version.outputs.VERSION_TAG }}"
+        echo "- **Type**: ${{ steps.version.outputs.RELEASE_TYPE }}"
+        echo "- **Trigger**: ${{ github.event_name }}"
+        if [[ -f "${{ steps.create_dmg.outputs.DMG_PATH }}" ]]; then
+          echo "- **DMG**: ✅ Created"
+        fi
+        echo "- **ZIP**: ✅ Created"
