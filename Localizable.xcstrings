@@ -201,16 +201,6 @@
         }
       }
     },
-    "Email me at [aviwad@gmail.com](mailto:aviwad@gmail.com) for any support\n⚠️ Disclaimer: I do not own the rights to Spotify or the lyric content presented.\nMusixmatch and Spotify own all rights to the lyrics.\n [Lyric Fever GitHub]()\nVersion 3.0" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请给我发送邮件 [aviwad@gmail.com](mailto:aviwad@gmail.com) 获取帮助\n⚠️ 免责声明: 我不拥有Spotify或展示歌词的版权。\n歌词所有权归Musixmatch和Spotify所有。\n [Lyric Fever GitHub]()\n版本 3.0"
-          }
-        }
-      }
-    },
     "Font Selected: %@, Size: %lld" : {
       "localizations" : {
         "en" : {
@@ -218,12 +208,7 @@
             "state" : "new",
             "value" : "Font Selected: %1$@, Size: %2$lld"
           }
-        }
-      }
-    },
-    "Font: %@, Size: %lld" : {
-      "extractionState" : "stale",
-      "localizations" : {
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -308,6 +293,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "隐藏翻译 (⌘ + T)"
+          }
+        }
+      }
+    },
+    "If you encounter any issues while using the app, please visit the [Github Issues](https://github.com/OrdinarySF/LyricFever-Lite/issues) page for support.  \n⚠️ Disclaimer: I do not own the copyright to Spotify or the displayed lyrics. \n All lyrics are the property of Musixmatch, Spotify, QQ Music, and NetEase Cloud Music.\n[Lyric Fever Lite GitHub](https://github.com/OrdinarySF/LyricFever-Lite)\nVersion 3.0" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用时遇到任何问题，请在[Github Issues](https://github.com/OrdinarySF/LyricFever-Lite/issues)页面获取帮助\n⚠️ 免责声明: 我不拥有Spotify或展示歌词的版权。\n歌词所有权归Musixmatch、Spotify、QQ音乐和网易云音乐所有。\n [Lyric Fever Lite GitHub](https://github.com/OrdinarySF/LyricFever-Lite)\n版本 3.0"
           }
         }
       }

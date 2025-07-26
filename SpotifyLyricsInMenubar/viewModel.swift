@@ -86,7 +86,7 @@ import IPADic
     @Published var showLyrics = true
     @AppStorage("showSongDetailsInMenubar") var showSongDetailsInMenubar = true
     @Published var fullscreen = false
-    @AppStorage("karaoke") var karaoke = false
+    @AppStorage("karaoke") var karaoke = true
     @Published var spotifyConnectDelay: Bool = false
     @Published var airplayDelay: Bool = false
     var translationExists: Bool { !translatedLyric.isEmpty}

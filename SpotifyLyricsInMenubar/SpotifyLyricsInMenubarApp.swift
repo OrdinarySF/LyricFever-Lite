@@ -434,6 +434,8 @@ struct SpotifyLyricsInMenubarApp: App {
                 }
                 .onReceive(NotificationCenter.default.publisher(for: Notification.Name("onboardingCompleted"))) { _ in
                     // Trigger music detection after onboarding is completed
+                    // Ensure lyrics are shown by default
+                    viewmodel.showLyrics = true
                     if spotifyOrAppleMusic {
                         // Apple Music
                         Task {
@@ -474,9 +476,40 @@ struct SpotifyLyricsInMenubarApp: App {
                         }
                     }
 
-                    // Start lyric updater if playing
+                    // Start lyric updater if playing and also fetch lyrics
                     if viewmodel.isPlaying {
-                        viewmodel.startLyricUpdater(appleMusicOrSpotify: spotifyOrAppleMusic)
+                        // First fetch lyrics for the current song
+                        Task {
+                            do {
+                                if spotifyOrAppleMusic {
+                                    // Apple Music
+                                    if let trackID = viewmodel.currentlyPlayingAppleMusicPersistentID {
+                                        let lyrics = try await viewmodel.fetchLyrics(for: trackID, viewmodel.currentlyPlayingName ?? "", spotifyOrAppleMusic)
+                                        await MainActor.run {
+                                            viewmodel.currentlyPlayingLyrics = lyrics
+                                            if !lyrics.isEmpty {
+                                                viewmodel.lyricsIsEmptyPostLoad = false
+                                                viewmodel.startLyricUpdater(appleMusicOrSpotify: spotifyOrAppleMusic)
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    // Spotify
+                                    if let trackID = viewmodel.currentlyPlaying {
+                                        let lyrics = try await viewmodel.fetchLyrics(for: trackID, viewmodel.currentlyPlayingName ?? "", spotifyOrAppleMusic)
+                                        await MainActor.run {
+                                            viewmodel.currentlyPlayingLyrics = lyrics
+                                            if !lyrics.isEmpty {
+                                                viewmodel.lyricsIsEmptyPostLoad = false
+                                                viewmodel.startLyricUpdater(appleMusicOrSpotify: spotifyOrAppleMusic)
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch {
+                                print("Failed to fetch lyrics on onboarding completion: \(error)")
+                            }
+                        }
                     }
                 }
                 .onChange(of: viewmodel.cookie) { newCookie in
@@ -573,6 +606,15 @@ struct SpotifyLyricsInMenubarApp: App {
                 .preferredColorScheme(.dark)
                 .onAppear {
                     NSApp.setActivationPolicy(.regular)
+                    // Force window to front when it appears
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        if let window = NSApp.windows.first(where: { $0.title == "Lyric Fever: Onboarding" }) {
+                            window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+                            window.makeKeyAndOrderFront(nil)
+                            window.orderFrontRegardless()
+                            NSApp.activate(ignoringOtherApps: true)
+                        }
+                    }
                 }
                 .onDisappear {
                     if !viewmodel.fullscreen {

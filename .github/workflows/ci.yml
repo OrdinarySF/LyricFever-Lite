@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Environment
+      run: |
+        echo "🔧 Setting up build environment..."
+        sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+        xcodebuild -version
+        swift --version
+    
+    - name: Resolve Dependencies
+      run: |
+        echo "📦 Resolving Swift Package dependencies..."
+        xcodebuild -resolvePackageDependencies \
+          -project "Lyric Fever.xcodeproj" \
+          -scheme "SpotifyLyricsInMenubar" \
+          -clonedSourcePackagesDirPath SourcePackages
+    
+    - name: Build Application
+      run: |
+        echo "🔨 Building Lyric Fever..."
+        xcodebuild build \
+          -project "Lyric Fever.xcodeproj" \
+          -scheme "SpotifyLyricsInMenubar" \
+          -destination "platform=macOS" \
+          -configuration Debug \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO \
+          DEVELOPMENT_TEAM="" \
+          -derivedDataPath build/DerivedData
+        
+        # Verify build succeeded
+        APP_PATH=$(find build/DerivedData/Build/Products/Debug -name "*.app" -type d | head -1)
+        if [[ -z "$APP_PATH" ]]; then
+          echo "❌ Build failed: No app bundle found"
+          exit 1
+        fi
+        echo "✅ Build succeeded: ${APP_PATH}"
+    
+    - name: Run Tests
+      run: |
+        echo "🧪 Running tests..."
+        # Uncomment when tests are available
+        # xcodebuild test \
+        #   -project "Lyric Fever.xcodeproj" \
+        #   -scheme "SpotifyLyricsInMenubar" \
+        #   -destination "platform=macOS" \
+        #   -derivedDataPath build/DerivedData
+        echo "⚠️ No tests configured yet"
+    
+    - name: Build Summary
+      if: always()
+      run: |
+        echo "## 📊 Build Summary"
+        echo "- **Branch**: ${{ github.ref_name }}"
+        echo "- **Commit**: ${{ github.sha }}"
+        echo "- **Author**: ${{ github.actor }}"
+        echo "- **Event**: ${{ github.event_name }}"

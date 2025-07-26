@@ -24,13 +24,13 @@ struct LyricLine: Decodable, Hashable {
         case startTimeMS = "startTimeMs"
         case words
     }
-    
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.startTimeMS = TimeInterval(try container.decode(String.self, forKey: .startTimeMS))!
         self.words = try container.decode(String.self, forKey: .words)
     }
-    
+
     init(startTime: TimeInterval, words: String) {
         self.startTimeMS = startTime
         self.words = words
@@ -59,7 +59,7 @@ struct SpotifyUser: Codable {
 
 struct SpotifyColorData: Codable {
     let background, text, highlightText: Int
-    
+
     init(from decoder: any Decoder) throws {
         guard let context = decoder.userInfo[CodingUserInfoKey.managedObjectContext] as? NSManagedObjectContext, let trackID = decoder.userInfo[CodingUserInfoKey.trackID] as? String, let trackName = decoder.userInfo[CodingUserInfoKey.trackName] as? String, let duration = decoder.userInfo[CodingUserInfoKey.duration] as? TimeInterval else {
             fatalError()
@@ -73,7 +73,7 @@ struct SpotifyColorData: Codable {
         newColorMapping.songColor = Int32(background)
         try context.save()
     }
-    
+
     init(trackID: String, context: NSManagedObjectContext, background: Int32) {
         self.background = Int(background)
         self.text = 0
@@ -128,7 +128,7 @@ struct LRCLyrics: Decodable {
     let instrumental: Bool
     let plainLyrics, syncedLyrics: String
     let lyrics: [LyricLine]
-    
+
     enum CodingKeys: CodingKey {
         case id
         case name
@@ -141,16 +141,16 @@ struct LRCLyrics: Decodable {
         case syncedLyrics
 //        case lyrics
     }
-    
+
     static func decodeLyrics(input: String) -> [LyricLine] {
         var lyricsArray: [LyricLine] = []
         let lines = input.components(separatedBy: "\n")
-        
+
         for line in lines {
             // Use regex to match the timestamp and the lyrics
             let regex = try! NSRegularExpression(pattern: #"\[(\d{2}:\d{2}\.\d{2})\]\s*(.*)"#)
             let matches = regex.matches(in: line, range: NSRange(line.startIndex..<line.endIndex, in: line))
-            
+
             for match in matches {
                 if let timestampRange = Range(match.range(at: 1), in: line),
                    let lyricsRange = Range(match.range(at: 2), in: line) {
@@ -160,10 +160,10 @@ struct LRCLyrics: Decodable {
                 }
             }
         }
-        
+
         return lyricsArray
     }
-    
+
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.id = try container.decode(Int.self, forKey: .id)
@@ -209,13 +209,13 @@ struct MusicBrainzReply: Codable {
     let created: String
     let count, offset: Int
     let releases: [MusicBrainzRelease]
-    
+
     init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             self.created = try container.decode(String.self, forKey: .created)
             self.count = try container.decode(Int.self, forKey: .count)
             self.offset = try container.decode(Int.self, forKey: .offset)
-            
+
             // Decode all releases and filter out "Bootleg" ones
             let allReleases = try container.decode([MusicBrainzRelease].self, forKey: .releases)
             self.releases = allReleases.filter { $0.status != "Bootleg" }
@@ -225,13 +225,13 @@ struct MusicBrainzReply: Codable {
 struct MusicBrainzRelease: Codable {
     let id: String
     let status: String?
-    
+
     enum CodingKeys: CodingKey {
         case id,status
     }
-    
+
     init(from decoder: any Decoder) throws {
-        
+
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.id = try container.decode(String.self, forKey: .id)
         self.status = try? container.decode(String.self, forKey: .status)
@@ -248,11 +248,11 @@ struct SpotifyServerTime: Decodable {
 struct NetEaseSearch: Decodable {
     let result: Result
     let code: Int
-    
+
     struct Result: Decodable {
         let songs: [Song]
         let songCount: Int
-        
+
         struct Song: Decodable {
             let name: String
             let id: Int
@@ -260,11 +260,11 @@ struct NetEaseSearch: Decodable {
             let album: Album
             let artists: [Artist]
         }
-        
+
         struct Album: Decodable {
             let name: String
         }
-        
+
         struct Artist: Decodable {
             let name: String
         }
@@ -284,10 +284,10 @@ struct NetEaseLyrics: Decodable {
     let code: Int
     let transUser: User
      */
-    
+
     struct User: Decodable {
         let nickname: String
-        
+
         /*
         let id: Int
         let status: Int
@@ -296,10 +296,10 @@ struct NetEaseLyrics: Decodable {
         let uptime: Int
          */
     }
-    
+
     struct Lyric: Decodable {
         let lyric: String?
-        
+
         /*
         let version: Int
          */

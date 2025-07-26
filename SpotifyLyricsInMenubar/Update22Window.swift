@@ -9,6 +9,7 @@ import SwiftUI
 
 struct Update22Window: View {
     @Environment(\.dismiss) var dismiss
+    @Environment(\.openWindow) var openWindow
     var body: some View {
         VStack(spacing: 25) {
             HStack {
@@ -79,6 +80,31 @@ struct Update22Window: View {
             }
             Button("Close") {
                 dismiss()
+                // Open settings window after closing update window
+                openWindow(id: "onboarding")
+                
+                // Use multiple methods to ensure window is focused
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    // Method 1: Activate app with all windows
+                    NSApp.activate(ignoringOtherApps: true)
+                    
+                    // Method 2: Find and focus the window
+                    if let window = NSApp.windows.first(where: { $0.title == "Lyric Fever: Onboarding" }) {
+                        window.makeKeyAndOrderFront(nil)
+                        window.orderFrontRegardless()
+                        window.center()
+                        
+                        // Method 3: Set window level temporarily
+                        let originalLevel = window.level
+                        window.level = .floating
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            window.level = originalLevel
+                        }
+                    }
+                    
+                    // Send notification to navigate to settings
+                    NotificationCenter.default.post(name: Notification.Name("didClickSettings"), object: nil)
+                }
             }
             .font(.headline)
             .controlSize(.large)
